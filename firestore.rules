@@ -6,7 +6,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Helpers
+    // --- Helpers ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -28,79 +28,93 @@ service cloud.firestore {
     }
 
     function isAdult(birthDate) {
-      // Very basic age check for rules (30+ years)
-      // duration.value() returns seconds. 30 years approx: 30 * 365.25 * 24 * 60 * 60
-      return duration.value(request.time - timestamp.value(birthDate)) >= 30 * 31557600;
+      // 30+ years: 30 * 365.25 * 24 * 60 * 60 = 946728000 seconds
+      return duration.value(request.time - timestamp.value(birthDate)) >= 946728000;
     }
 
-    // Users
+    function isMatchParticipant(matchId) {
+      return isSignedIn() && (request.auth.uid in get(/databases/$(database)/documents/matches/$(matchId)).data.users);
+    }
+
+    // --- Users ---
     match /users/{userId} {
       function isValidUser(data) {
-        return data.uid == request.auth.uid 
+        return data.uid == userId 
           && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100
-          && data.birthDate is string // Validated as string then converted to timestamp in isAdult
+          && data.birthDate is string
           && data.neighborhood is string && data.neighborhood.size() <= 100
+          && (data.gender in ['male', 'female', 'other'])
+          && (data.interestedIn in ['male', 'female', 'all'])
           && (data.verificationStatus in ['none', 'pending', 'verified', 'rejected'])
-          && data.subscriptionTier in ['free', 'premium', 'executive'];
+          && (data.subscriptionTier in ['free', 'premium', 'executive']);
       }
 
-      allow get: if isSignedIn(); // Allow reading profiles for discovery
-      allow list: if isSignedIn(); // Allow discovery queries
+      // Professionals can discover each other
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); 
+
       allow create: if isOwner(userId) 
+        && isValidId(userId)
         && isValidUser(incoming()) 
         && isAdult(incoming().birthDate)
-        && incoming().createdAt == request.time;
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
       
       allow update: if isOwner(userId) 
         && isValidUser(incoming())
         && incoming().uid == existing().uid
         && incoming().birthDate == existing().birthDate // Immutable birthdate
         && (
-          // Standard Update: bio, photo, neighborhood, preferences
-          incoming().diff(existing()).affectedKeys().hasOnly(['bio', 'photoURL', 'neighborhood', 'interestedIn', 'updatedAt', 'swipeCount', 'displayName'])
+          // Update Profile
+          incoming().diff(existing()).affectedKeys().hasOnly(['bio', 'photoURL', 'neighborhood', 'interestedIn', 'updatedAt', 'swipeCount', 'displayName', 'gender'])
           || 
           // Verification Request
           (incoming().verificationStatus == 'pending' && incoming().diff(existing()).affectedKeys().hasOnly(['verificationStatus', 'updatedAt']))
+          ||
+          // Swipe count increment
+          (incoming().diff(existing()).affectedKeys().hasOnly(['swipeCount', 'updatedAt']))
         )
         && incoming().updatedAt == request.time;
     }
 
-    // Matches
+    // --- Matches ---
     match /matches/{matchId} {
-      function isParticipant() {
-        return isSignedIn() && (request.auth.uid in existing().users);
-      }
-
       function isValidMatch(data) {
         return data.users.size() == 2 
           && data.users.hasAll([request.auth.uid])
           && data.updatedAt == request.time;
       }
 
-      allow get, list: if isSignedIn() && (request.auth.uid in resource.data.users);
+      function userIsOwner() {
+        return isSignedIn() && (request.auth.uid in resource.data.users);
+      }
+
+      allow get: if userIsOwner();
+      allow list: if isSignedIn() && (request.auth.uid in resource.data.users);
       
       allow create: if isSignedIn() 
+        && isValidId(matchId)
         && isValidMatch(incoming())
-        && incoming().isMutual == false; // Initial like
+        && incoming().isMutual == false; // Initial like starts as non-mutual
 
-      allow update: if isParticipant()
+      allow update: if userIsOwner()
         && incoming().users == existing().users
         && (
           // Action: Mutual Match (second user likes back)
           (incoming().isMutual == true && incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'isMutual', 'updatedAt']))
           ||
-          // Action: Update last message
+          // Action: Update match metadata (last message)
           (incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'updatedAt']))
         )
         && incoming().updatedAt == request.time;
 
-      // Messages
+      // Messages Subcollection
       match /messages/{messageId} {
-        allow read, list: if isParticipant();
-        allow create: if isParticipant() 
+        allow read, list: if isMatchParticipant(matchId);
+        allow create: if isMatchParticipant(matchId) 
           && incoming().senderId == request.auth.uid
           && incoming().createdAt == request.time
-          && incoming().text is string && incoming().text.size() <= 1000;
+          && incoming().text is string && incoming().text.size() <= 2000;
       }
     }
   }

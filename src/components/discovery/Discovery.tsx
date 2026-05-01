@@ -1,247 +1,175 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc, increment } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs, doc, setDoc, serverTimestamp, arrayUnion, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { UserProfile, Match } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, X, MapPin, ShieldCheck, Sparkles, Eye, User as UserIcon, Lock, Crown } from 'lucide-react';
+import { Heart, X, MapPin, ShieldCheck, Sparkles, ShieldAlert, Calendar } from 'lucide-react';
 
 interface DiscoveryProps {
   profile: UserProfile;
 }
 
 export default function Discovery({ profile }: DiscoveryProps) {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [potentialMatches, setPotentialMatches] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [matchResult, setMatchResult] = useState<UserProfile | null>(null);
-  const [showLimitReached, setShowLimitReached] = useState(false);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      const path = 'users';
+    const fetchPotentials = async () => {
+      setLoading(true);
       try {
-        const q = query(
+        // Simple logic: fetch users of interested gender
+        let q = query(
           collection(db, 'users'),
-          where('gender', '==', profile.interestedIn === 'all' ? 'female' : profile.interestedIn),
+          where('uid', '!=', profile.uid),
+          limit(20)
         );
-        
+
+        if (profile.interestedIn !== 'all') {
+          q = query(q, where('gender', '==', profile.interestedIn));
+        }
+
         const snap = await getDocs(q);
-        const fetched = snap.docs
-          .map(d => d.data() as UserProfile)
-          .filter(u => u.uid !== profile.uid);
+        const users = snap.docs.map(d => d.data() as UserProfile);
         
-        setUsers(fetched);
+        // Filter out already swiped/matched (In real app we'd keep track of swipedIds)
+        setPotentialMatches(users);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'users');
+      } finally {
         setLoading(false);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, path);
       }
     };
-    fetchUsers();
-  }, [profile]);
+
+    fetchPotentials();
+  }, [profile.uid, profile.interestedIn]);
 
   const handleSwipe = async (direction: 'left' | 'right') => {
-    // Check limits for free users
-    if (direction === 'right' && profile.subscriptionTier === 'free' && profile.swipeCount >= 10) {
-      setShowLimitReached(true);
-      return;
-    }
+    const target = potentialMatches[currentIndex];
+    if (!target) return;
 
-    const targetUser = users[currentIndex];
-    const matchId = [profile.uid, targetUser.uid].sort().join('_');
-    const matchPath = `matches/${matchId}`;
-
-    try {
-      if (direction === 'right') {
-        const matchRef = doc(db, 'matches', matchId);
-        const matchSnap = await getDoc(matchRef);
-
-        // Update current user's swipe count
-        await updateDoc(doc(db, 'users', profile.uid), {
-          swipeCount: increment(1),
+    if (direction === 'right') {
+      // Logic for like
+      const matchId = [profile.uid, target.uid].sort().join('_');
+      const matchRef = doc(db, 'matches', matchId);
+      
+      const matchSnap = await getDoc(matchRef);
+      
+      if (matchSnap.exists()) {
+        const matchData = matchSnap.data() as Match;
+        if (matchData.likes[target.uid]) {
+          // It's a mutual match!
+          await setDoc(matchRef, {
+            likes: { ...matchData.likes, [profile.uid]: serverTimestamp() },
+            isMutual: true,
+            updatedAt: serverTimestamp(),
+            users: arrayUnion(profile.uid, target.uid)
+          }, { merge: true });
+          alert("It's a Match! Discreet connection established.");
+        }
+      } else {
+        // Initial like
+        await setDoc(matchRef, {
+          id: matchId,
+          users: [profile.uid, target.uid],
+          likes: { [profile.uid]: serverTimestamp() },
+          isMutual: false,
           updatedAt: serverTimestamp()
         });
-
-        if (matchSnap.exists()) {
-          const matchData = matchSnap.data() as Match;
-          if (matchData.likes[targetUser.uid]) {
-            await updateDoc(matchRef, {
-              [`likes.${profile.uid}`]: serverTimestamp(),
-              isMutual: true,
-              updatedAt: serverTimestamp()
-            });
-            setMatchResult(targetUser);
-          }
-        } else {
-          await setDoc(matchRef, {
-            users: [profile.uid, targetUser.uid],
-            likes: { [profile.uid]: serverTimestamp() },
-            isMutual: false,
-            updatedAt: serverTimestamp()
-          });
-        }
       }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, matchPath);
     }
-    
-    setCurrentIndex(currentIndex + 1);
+
+    setCurrentIndex(prev => prev + 1);
   };
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Sparkles className="animate-pulse text-[#F27D26]" />
+      </div>
+    );
+  }
 
-  const currentUserDisplay = users[currentIndex];
+  const currentProfile = potentialMatches[currentIndex];
 
   return (
-    <div className="h-full flex flex-col relative px-4 pt-4">
+    <div className="flex-1 flex flex-col p-6 h-full overflow-hidden">
       <header className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-serif">Discovery</h2>
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Near {profile.neighborhood}</p>
+          <h2 className="text-2xl font-serif italic text-white/90">Curated View</h2>
+          <p className="text-[9px] uppercase tracking-[0.2em] text-[#F27D26]">Daily Professionals</p>
         </div>
-        <div className={`p-2 rounded-lg ${profile.subscriptionTier === 'executive' ? 'bg-purple-500/10 text-purple-400' : 'bg-[#F27D26]/10 text-[#F27D26]'}`}>
-          {profile.subscriptionTier === 'executive' ? <Crown size={18} /> : <Sparkles size={18} />}
+        <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-[#F27D26]">
+          <ShieldCheck size={20} />
         </div>
       </header>
 
       <div className="flex-1 relative">
-        <AnimatePresence mode="wait">
-          {showLimitReached ? (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute inset-0 bg-[#0a0a0a] rounded-[2rem] border border-[#F27D26]/20 flex flex-col items-center justify-center p-8 text-center space-y-6"
+        <AnimatePresence mode="popLayout">
+          {currentProfile ? (
+            <motion.div
+              key={currentProfile.uid}
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 1.1, opacity: 0, x: direction === 'right' ? 300 : -300 }}
+              className="absolute inset-0 bg-[#111] rounded-3xl overflow-hidden border border-white/5 flex flex-col shadow-2xl"
             >
-              <div className="w-16 h-16 rounded-full bg-[#F27D26]/10 flex items-center justify-center text-[#F27D26]">
-                <Lock size={32} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-serif text-white">Daily Limit Reached</h3>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  As a Standard professional, you have reached your daily interaction limit. Upgrade to maintain your presence without boundaries.
-                </p>
-              </div>
-              <button 
-                onClick={() => setShowLimitReached(false)}
-                className="w-full bg-[#F27D26] text-black py-4 rounded-full font-bold text-xs uppercase tracking-widest shadow-lg shadow-[#F27D26]/20"
-              >
-                Explore Tiers
-              </button>
-            </motion.div>
-          ) : currentUserDisplay ? (
-            <motion.div 
-              key={currentUserDisplay.uid}
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ x: 200, opacity: 0 }}
-              className="absolute inset-0 bg-[#111] rounded-[2rem] overflow-hidden border border-white/5 flex flex-col"
-            >
-              <div className="relative flex-1 bg-gradient-to-b from-gray-800 to-black">
-                {currentUserDisplay.photoURL ? (
-                   <img 
-                    src={currentUserDisplay.photoURL} 
-                    className="w-full h-full object-cover opacity-80" 
-                    alt={currentUserDisplay.displayName}
-                    referrerPolicy="no-referrer"
-                   />
+              {/* Photo Placeholder */}
+              <div className="h-[60%] w-full bg-gradient-to-b from-gray-800 to-black relative">
+                {currentProfile.photoURL ? (
+                  <img src={currentProfile.photoURL} alt="" className="w-full h-full object-cover opacity-60" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[#181818]">
-                    <UserIcon size={80} className="opacity-10" />
+                  <div className="w-full h-full flex items-center justify-center bg-white/5">
+                     <Sparkles size={48} className="text-white/10" />
                   </div>
                 )}
                 
-                {/* Privacy Badge */}
-                {currentUserDisplay.isVerified && (
-                  <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-1 border border-white/20">
-                    <ShieldCheck size={12} className="text-[#F27D26]" />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">Verified</span>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent" />
+                
+                <div className="absolute bottom-6 left-6 right-6">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-2xl font-serif italic">{currentProfile.displayName}</h3>
+                    {currentProfile.isVerified && <ShieldCheck size={16} className="text-[#F27D26]" />}
                   </div>
-                )}
-
-                <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black via-black/60 to-transparent">
-                  <div className="space-y-1">
-                    <h3 className="text-2xl font-semibold flex items-center gap-2">
-                      {currentUserDisplay.displayName}, {new Date().getFullYear() - new Date(currentUserDisplay.birthDate).getFullYear()}
-                    </h3>
-                    <div className="flex items-center gap-1 text-gray-400 text-xs text uppercase tracking-widest">
-                       <MapPin size={12} />
-                       {currentUserDisplay.neighborhood}
-                    </div>
+                  <div className="flex items-center gap-4 text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+                    <span className="flex items-center gap-1"><MapPin size={12}/> {currentProfile.neighborhood}</span>
+                    <span className="flex items-center gap-1"><Calendar size={12}/> 30+</span>
                   </div>
-                  <p className="mt-3 text-sm text-gray-300 line-clamp-2 leading-relaxed italic opacity-80">
-                    "{currentUserDisplay.bio || 'Professional in Lagos.'}"
-                  </p>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="p-6 flex justify-around items-center bg-black/40">
-                <button 
-                  onClick={() => handleSwipe('left')}
-                  className="w-16 h-16 rounded-full border border-white/10 flex items-center justify-center text-gray-400 hover:bg-white/5 transition-all"
-                >
-                  <X size={24} />
-                </button>
-                <button 
-                  onClick={() => handleSwipe('right')}
-                  className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all"
-                >
-                  <Heart size={24} fill="currentColor" />
-                </button>
+              <div className="flex-1 p-6 space-y-4">
+                <p className="text-sm text-gray-300 leading-relaxed italic line-clamp-3">
+                  "{currentProfile.bio || 'Maintaining a discreet presence in the upper echelons of Lagos professional circles.'}"
+                </p>
+                
+                <div className="pt-4 flex justify-between gap-4">
+                  <button 
+                    onClick={() => handleSwipe('left')}
+                    className="flex-1 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-500 hover:border-white/20 transition-all"
+                  >
+                    <X size={24} />
+                  </button>
+                  <button 
+                    onClick={() => handleSwipe('right')}
+                    className="flex-1 h-16 rounded-2xl bg-[#F27D26]/10 border border-[#F27D26]/20 flex items-center justify-center text-[#F27D26] hover:bg-[#F27D26]/20 transition-all"
+                  >
+                    <Heart size={24} fill="currentColor" fillOpacity={0.1} />
+                  </button>
+                </div>
               </div>
             </motion.div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 px-8">
-              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-600">
-                <Eye size={32} />
-              </div>
-              <h3 className="text-xl font-serif">Discovery Paused</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">We've shown you everyone in your immediate professional circle. Check back soon for new refined profiles.</p>
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+              <ShieldAlert className="text-gray-800" size={64} />
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Circle Exhausted</p>
+              <p className="text-[10px] text-gray-600">Your professional circle will refresh at dawn.</p>
             </div>
           )}
         </AnimatePresence>
       </div>
-
-      {/* Match Success Overlay */}
-      <AnimatePresence>
-        {matchResult && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-8 text-center"
-          >
-            <motion.div 
-               initial={{ scale: 0.5 }}
-               animate={{ scale: 1 }}
-               className="space-y-4"
-            >
-              <h1 className="text-6xl font-serif italic text-[#F27D26]">A Match.</h1>
-              <p className="text-sm uppercase tracking-[0.3em] font-medium text-white/60">Absolute Discretion Maintained</p>
-            </motion.div>
-
-            <div className="my-12 flex -space-x-4">
-               <div className="w-24 h-24 rounded-full border-4 border-black overflow-hidden bg-gray-900">
-                 <img src={profile.photoURL} alt="Me" referrerPolicy="no-referrer" />
-               </div>
-               <div className="w-24 h-24 rounded-full border-4 border-black overflow-hidden bg-gray-900">
-                 <img src={matchResult.photoURL} alt="Matched" referrerPolicy="no-referrer" />
-               </div>
-            </div>
-
-            <p className="max-w-xs text-sm text-gray-400 mb-10 leading-relaxed">
-               You and {matchResult.displayName} have mutually expressed interest. Your identities are now visible to each other.
-            </p>
-
-            <button 
-              onClick={() => setMatchResult(null)}
-              className="w-full bg-white text-black py-4 rounded-full font-medium"
-            >
-              Express your Greetings
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
 
+let direction: 'left' | 'right' = 'right';
