@@ -1,0 +1,12 @@
+{
+  "name": "VEIL v2 — powered by CFN",
+  "description": "Verified, discreet dating for 30+ professionals in Nigeria, prioritizing privacy, identity verification and absolute accountability.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "Firebase",
+    "Google Gemini AI"
+  ]
+}
