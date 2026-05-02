@@ -6,6 +6,7 @@ import { UserProfile, VerificationStatus, SubscriptionTier } from '../../types';
 import { motion } from 'motion/react';
 import { ArrowRight, MapPin, Calendar, User as UserIcon, Sparkles } from 'lucide-react';
 import { verifyProfileTone } from '../../lib/gemini';
+import PhotoUpload from '../ui/PhotoUpload';
 
 interface OnboardingProps {
   user: User;
@@ -21,6 +22,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
     interestedIn: 'all',
     neighborhood: '',
     bio: '',
+    photoURL: user.photoURL || '',
   });
 
   const [aiFeedback, setAiFeedback] = useState<{ score?: number, suggestion?: string } | null>(null);
@@ -50,7 +52,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
       bio: formData.bio,
       isVerified: (aiFeedback?.score || 0) > 8,
       verificationStatus: (aiFeedback?.score || 0) > 8 ? 'verified' : 'none' as VerificationStatus,
-      photoURL: user.photoURL || undefined,
+      photoURL: formData.photoURL || undefined,
       swipeCount: 0,
       subscriptionTier: 'free' as SubscriptionTier,
       createdAt: serverTimestamp(),
@@ -86,6 +88,13 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
             animate={{ x: 0, opacity: 1 }}
             className="space-y-6"
           >
+            <PhotoUpload 
+              userId={user.uid}
+              currentPhotoURL={formData.photoURL}
+              onUploadComplete={(url) => setFormData({ ...formData, photoURL: url })}
+              label="Official Portrait"
+            />
+
             <InputGroup 
               label="Full Name" 
               icon={<UserIcon size={16}/>}

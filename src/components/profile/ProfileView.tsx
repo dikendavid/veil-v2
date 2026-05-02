@@ -1,6 +1,9 @@
 import { UserProfile } from '../../types';
 import { motion } from 'motion/react';
 import { LogOut, ShieldCheck, CreditCard, ChevronRight, MapPin, Eye, Settings, Briefcase } from 'lucide-react';
+import PhotoUpload from '../ui/PhotoUpload';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 
 interface ProfileViewProps {
   profile: UserProfile;
@@ -8,6 +11,17 @@ interface ProfileViewProps {
 }
 
 export default function ProfileView({ profile, onLogout }: ProfileViewProps) {
+  const handlePhotoUpdate = async (url: string) => {
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        photoURL: url,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -16,17 +30,15 @@ export default function ProfileView({ profile, onLogout }: ProfileViewProps) {
     >
       {/* Hero Header */}
       <div className="p-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-[#F27D26] to-[#8B4513] p-1 shadow-2xl">
-            <div className="w-full h-full rounded-[1.8rem] bg-[#111] overflow-hidden flex items-center justify-center relative">
-              {profile.photoURL ? (
-                <img src={profile.photoURL} className="w-full h-full object-cover" alt="" />
-              ) : (
-                <span className="text-4xl font-serif text-[#F27D26]">V</span>
-              )}
-            </div>
+        <div className="flex items-start justify-between">
+          <div className="w-32">
+            <PhotoUpload 
+              userId={profile.uid}
+              currentPhotoURL={profile.photoURL}
+              onUploadComplete={handlePhotoUpdate}
+            />
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-2 pt-2">
             <span className={`px-3 py-1 rounded-full text-[8px] uppercase tracking-widest font-bold border ${profile.isVerified ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-amber-500/30 text-amber-500 bg-amber-500/5'}`}>
               {profile.verificationStatus}
             </span>
