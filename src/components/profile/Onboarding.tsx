@@ -198,12 +198,29 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
               />
               {aiFeedback && (
                 <motion.div 
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 bg-[#F27D26]/5 border border-[#F27D26]/10 rounded-xl space-y-1"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="p-5 bg-gradient-to-br from-[#F27D26]/10 to-transparent border border-[#F27D26]/20 rounded-3xl space-y-3 relative overflow-hidden"
                 >
-                  <p className="text-[9px] uppercase tracking-widest text-[#F27D26] font-bold">Concierge Note (Score: {aiFeedback.score}/10)</p>
-                  <p className="text-[10px] text-gray-400 italic">"{aiFeedback.suggestion}"</p>
+                  <div className="absolute top-0 right-0 p-4 opacity-5">
+                    <Sparkles size={40} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] uppercase tracking-[0.3em] text-[#F27D26] font-bold">Concierge Appraisal</p>
+                    <div className="px-2 py-0.5 rounded-full bg-[#F27D26] text-black text-[8px] font-black uppercase">
+                       {aiFeedback.score}/10
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-300 italic leading-relaxed">"{aiFeedback.suggestion}"</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <div className="h-0.5 flex-1 bg-white/5 rounded-full overflow-hidden">
+                       <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(aiFeedback.score || 0) * 10}%` }}
+                        className="h-full bg-[#F27D26]" 
+                       />
+                    </div>
+                  </div>
                 </motion.div>
               )}
             </div>

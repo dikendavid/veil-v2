@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { UserProfile, Match, Message } from '../../types';
+import { UserProfile, Match } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, ArrowLeft, ShieldCheck, Lock, MoreHorizontal } from 'lucide-react';
+import { Send, ArrowLeft, ShieldCheck, Lock, MoreHorizontal, Loader2 } from 'lucide-react';
+import { useChat } from '../../hooks/useChat';
 
 interface ChatThreadProps {
   match: Match;
@@ -12,52 +11,20 @@ interface ChatThreadProps {
 }
 
 export default function ChatThread({ match, userProfile, onBack }: ChatThreadProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const otherUser = match.participants?.[0];
+  const { messages, loading, sendMessage } = useChat(match.id, userProfile);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'matches', match.id, 'messages'),
-      orderBy('createdAt', 'asc')
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map(d => ({ ...d.data(), id: d.id } as Message)));
-      setTimeout(() => {
-        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, `matches/${match.id}/messages`);
-    });
-
-    return () => unsub();
-  }, [match.id]);
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
-
     const text = inputText;
     setInputText('');
-
-    try {
-      await addDoc(collection(db, 'matches', match.id, 'messages'), {
-        senderId: userProfile.uid,
-        text,
-        createdAt: serverTimestamp(),
-        isRead: false
-      });
-
-      // Update match preview
-      await setDoc(doc(db, 'matches', match.id), {
-        lastMessage: text,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `matches/${match.id}/messages`);
-    }
+    await sendMessage(text);
   };
 
   return (

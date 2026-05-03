@@ -13,6 +13,7 @@ export interface UserProfile {
   verificationStatus: VerificationStatus;
   photoURL?: string;
   swipeCount: number;
+  swipedIds?: string[];
   subscriptionTier: SubscriptionTier;
   createdAt: any;
   updatedAt: any;
