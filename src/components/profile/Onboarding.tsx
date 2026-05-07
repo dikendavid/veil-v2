@@ -5,7 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { UserProfile, VerificationStatus, SubscriptionTier } from '../../types';
 import { motion } from 'motion/react';
 import { ArrowRight, MapPin, Calendar, User as UserIcon, Sparkles } from 'lucide-react';
-import { verifyProfileTone } from '../../lib/gemini';
+import { verifyProfileTone } from '../../lib/ai';
 import PhotoUpload from '../ui/PhotoUpload';
 
 interface OnboardingProps {
@@ -23,6 +23,8 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
     neighborhood: '',
     bio: '',
     photoURL: user.photoURL || '',
+    idPhotoURL: '',
+    selfiePhotoURL: '',
   });
 
   const [aiFeedback, setAiFeedback] = useState<{ score?: number, suggestion?: string } | null>(null);
@@ -50,8 +52,8 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
       interestedIn: formData.interestedIn,
       neighborhood: formData.neighborhood,
       bio: formData.bio,
-      isVerified: (aiFeedback?.score || 0) > 8,
-      verificationStatus: (aiFeedback?.score || 0) > 8 ? 'verified' : 'none' as VerificationStatus,
+      isVerified: !!(aiFeedback?.score && aiFeedback.score > 8 && formData.idPhotoURL && formData.selfiePhotoURL),
+      verificationStatus: (aiFeedback?.score && aiFeedback.score > 8 && formData.idPhotoURL && formData.selfiePhotoURL) ? 'verified' : 'pending' as VerificationStatus,
       photoURL: formData.photoURL || undefined,
       swipeCount: 0,
       subscriptionTier: 'free' as SubscriptionTier,
@@ -78,7 +80,7 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
     >
       <header className="mb-12">
         <h1 className="text-4xl font-serif italic mb-2">Refining the Identity</h1>
-        <p className="text-[10px] text-[#F27D26] uppercase tracking-[0.3em] font-bold">Step {step} of 3</p>
+        <p className="text-[10px] text-[#F27D26] uppercase tracking-[0.3em] font-bold">Step {step} of 4</p>
       </header>
 
       <div className="space-y-8">
@@ -226,8 +228,46 @@ export default function Onboarding({ user, onComplete }: OnboardingProps) {
             </div>
             
             <button 
+              onClick={() => setStep(4)}
+              disabled={!formData.neighborhood || formData.bio.length < 20}
+              className="w-full bg-white h-14 rounded-full flex items-center justify-between px-8 text-black font-bold uppercase tracking-widest text-[10px] disabled:opacity-30"
+            >
+              Next Step
+              <ArrowRight size={16} />
+            </button>
+          </motion.div>
+        )}
+
+        {step === 4 && (
+          <motion.div 
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            className="space-y-6"
+          >
+            <div className="space-y-8">
+              <div className="text-center">
+                <h3 className="text-xl font-serif italic text-white mb-2">Identity Verification</h3>
+                <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">Secure Liveness & ID Check</p>
+              </div>
+
+              <PhotoUpload 
+                userId={user.uid}
+                currentPhotoURL={formData.idPhotoURL}
+                onUploadComplete={(url) => setFormData({ ...formData, idPhotoURL: url })}
+                label="Government ID (Front)"
+              />
+
+              <PhotoUpload 
+                userId={user.uid}
+                currentPhotoURL={formData.selfiePhotoURL}
+                onUploadComplete={(url) => setFormData({ ...formData, selfiePhotoURL: url })}
+                label="Liveness Selfie"
+              />
+            </div>
+            
+            <button 
               onClick={handleSubmit}
-              disabled={isSubmitting || !formData.neighborhood}
+              disabled={isSubmitting || !formData.idPhotoURL || !formData.selfiePhotoURL}
               className="w-full bg-[#F27D26] h-14 rounded-full flex items-center justify-center gap-3 text-black font-bold uppercase tracking-widest text-[10px] disabled:opacity-30"
             >
               {isSubmitting ? (

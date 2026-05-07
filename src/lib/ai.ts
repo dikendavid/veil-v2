@@ -29,7 +29,7 @@ export async function verifyProfileTone(bio: string) {
     const text = response.text || '{}';
     return JSON.parse(text);
   } catch (error) {
-    console.error('Gemini Error:', error);
+    console.error('AI Error:', error);
     return { isProfessional: true, score: 5, suggestion: 'Verification system offline.' };
   }
 }

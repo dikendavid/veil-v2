@@ -10,6 +10,7 @@ import { auth, db } from './lib/firebase';
 import { UserProfile } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Eye, Heart, MessageSquare, User as UserIcon, LogOut, Loader2, MapPin } from 'lucide-react';
+import { useNotifications } from './hooks/useNotifications';
 
 // Components (will be created)
 import Onboarding from './components/profile/Onboarding';
@@ -27,6 +28,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('discovery');
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Initialize push notification listener
+  useNotifications(user?.uid);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
