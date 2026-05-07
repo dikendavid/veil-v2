@@ -14,6 +14,9 @@ export interface UserProfile {
   photoURL?: string;
   swipeCount: number;
   swipedIds?: string[];
+  isIncognito?: boolean;
+  minAgePreference?: number;
+  maxAgePreference?: number;
   subscriptionTier: SubscriptionTier;
   createdAt: any;
   updatedAt: any;
@@ -25,6 +28,9 @@ export interface Match {
   likes: Record<string, string>;
   isMutual: boolean;
   lastMessage?: string;
+  lastMessageSenderId?: string;
+  isRead?: boolean;
+  unmatchedBy?: string[];
   updatedAt: string;
   participants?: UserProfile[]; // For frontend convenience
 }

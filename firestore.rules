@@ -66,13 +66,13 @@ service cloud.firestore {
         && incoming().birthDate == existing().birthDate // Immutable birthdate
         && (
           // Update Profile
-          incoming().diff(existing()).affectedKeys().hasOnly(['bio', 'photoURL', 'neighborhood', 'interestedIn', 'updatedAt', 'swipeCount', 'displayName', 'gender'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['bio', 'photoURL', 'neighborhood', 'interestedIn', 'updatedAt', 'swipeCount', 'displayName', 'gender', 'isIncognito', 'swipedIds', 'minAgePreference', 'maxAgePreference'])
           || 
           // Verification Request
           (incoming().verificationStatus == 'pending' && incoming().diff(existing()).affectedKeys().hasOnly(['verificationStatus', 'updatedAt']))
           ||
           // Swipe count increment
-          (incoming().diff(existing()).affectedKeys().hasOnly(['swipeCount', 'updatedAt']))
+          (incoming().diff(existing()).affectedKeys().hasOnly(['swipeCount', 'updatedAt', 'swipedIds']))
         )
         && incoming().updatedAt == request.time;
     }
@@ -101,10 +101,13 @@ service cloud.firestore {
         && incoming().users == existing().users
         && (
           // Action: Mutual Match (second user likes back)
-          (incoming().isMutual == true && incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'isMutual', 'updatedAt']))
+          (incoming().isMutual == true && incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'isMutual', 'updatedAt', 'users']))
           ||
-          // Action: Update match metadata (last message)
-          (incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'updatedAt']))
+          // Action: Update match metadata (last message, unread tracking)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageSenderId', 'isRead', 'updatedAt']))
+          ||
+          // Action: Unmatch
+          (incoming().diff(existing()).affectedKeys().hasOnly(['unmatchedBy', 'updatedAt']))
         )
         && incoming().updatedAt == request.time;
 
@@ -115,6 +118,21 @@ service cloud.firestore {
           && incoming().senderId == request.auth.uid
           && incoming().createdAt == request.time
           && incoming().text is string && incoming().text.size() <= 2000;
+      }
+      
+      // Calls Subcollection (WebRTC Signaling)
+      match /calls/{callId} {
+        allow read, list: if isMatchParticipant(matchId);
+        allow create: if isMatchParticipant(matchId)
+          && incoming().callerId == request.auth.uid;
+        allow update, delete: if isMatchParticipant(matchId);
+
+        match /callerCandidates/{candidateId} {
+          allow read, write: if isMatchParticipant(matchId);
+        }
+        match /calleeCandidates/{candidateId} {
+          allow read, write: if isMatchParticipant(matchId);
+        }
       }
     }
   }

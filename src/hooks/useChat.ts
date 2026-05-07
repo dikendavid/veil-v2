@@ -44,6 +44,8 @@ export function useChat(matchId: string, currentUser: UserProfile) {
       // Update match preview
       await setDoc(doc(db, 'matches', matchId), {
         lastMessage: text,
+        lastMessageSenderId: currentUser.uid,
+        isRead: false,
         updatedAt: serverTimestamp()
       }, { merge: true });
     } catch (err) {

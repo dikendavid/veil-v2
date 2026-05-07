@@ -80,7 +80,21 @@ export default function ProfileView({ profile, onLogout }: ProfileViewProps) {
           <label className="text-[10px] uppercase tracking-[0.4em] text-gray-600 font-bold ml-1">Account & Security</label>
           <div className="bg-white/5 border border-white/5 rounded-[2.5rem] overflow-hidden divide-y divide-white/5">
             <MenuItem icon={<CreditCard size={18}/>} label="Membership Tier" value="Standard" />
-            <MenuItem icon={<Eye size={18}/>} label="Incognito Mode" value="Active" />
+            <MenuItem 
+              onClick={async () => {
+                try {
+                  await updateDoc(doc(db, 'users', profile.uid), {
+                    isIncognito: !profile.isIncognito,
+                    updatedAt: serverTimestamp()
+                  });
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              icon={<Eye size={18} className={profile.isIncognito ? 'text-[#F27D26]' : ''}/>} 
+              label="Incognito Mode" 
+              value={profile.isIncognito ? "Active" : "Off"} 
+            />
             <MenuItem icon={<Settings size={18}/>} label="Preference Filters" />
           </div>
         </section>
@@ -99,9 +113,9 @@ export default function ProfileView({ profile, onLogout }: ProfileViewProps) {
   );
 }
 
-function MenuItem({ icon, label, value }: { icon: any, label: string, value?: string }) {
+function MenuItem({ icon, label, value, onClick }: { icon: any, label: string, value?: string, onClick?: () => void }) {
   return (
-    <button className="w-full h-14 px-6 flex items-center justify-between group transition-all hover:bg-white/[0.02]">
+    <button onClick={onClick} className="w-full h-14 px-6 flex items-center justify-between group transition-all hover:bg-white/[0.02]">
       <div className="flex items-center gap-4 text-gray-400 group-hover:text-white transition-colors">
         {icon}
         <span className="text-xs uppercase tracking-widest">{label}</span>

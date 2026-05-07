@@ -3,7 +3,19 @@ import { collection, query, where, limit, getDocs, doc, setDoc, serverTimestamp,
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { UserProfile, Match } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, X, MapPin, ShieldCheck, Sparkles, ShieldAlert, Calendar, MessageCircle, Lock } from 'lucide-react';
+import { Heart, X, MapPin, ShieldCheck, Sparkles, ShieldAlert, Calendar, MessageCircle, Lock, Settings2 } from 'lucide-react';
+
+const calculateAge = (birthDateStr: string) => {
+  if (!birthDateStr) return 0;
+  const today = new Date();
+  const birthDate = new Date(birthDateStr);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+  }
+  return age;
+};
 
 interface DiscoveryProps {
   profile: UserProfile;
@@ -15,6 +27,9 @@ export default function Discovery({ profile }: DiscoveryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [matchedWith, setMatchedWith] = useState<UserProfile | null>(null);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right'>('right');
+  const [showFilters, setShowFilters] = useState(false);
+  const [tempMinAge, setTempMinAge] = useState(profile.minAgePreference || 30);
+  const [tempMaxAge, setTempMaxAge] = useState(profile.maxAgePreference || 60);
 
   useEffect(() => {
     const fetchPotentials = async () => {
@@ -34,9 +49,49 @@ export default function Discovery({ profile }: DiscoveryProps) {
         }
 
         const snap = await getDocs(q);
+        const minPref = profile.minAgePreference || 30;
+        const maxPref = profile.maxAgePreference || 100;
+        
+        const calculateCompatibilityScore = (p1: UserProfile, p2: UserProfile) => {
+          let score = 0;
+          
+          // Neighborhood match
+          if (p1.neighborhood && p2.neighborhood && p1.neighborhood.toLowerCase() === p2.neighborhood.toLowerCase()) {
+            score += 15;
+          }
+          
+          // Simple bio keyword matching (professional background / interests proxy)
+          if (p1.bio && p2.bio) {
+            const getKeywords = (text: string) => {
+              const stops = new Set(['the', 'and', 'a', 'to', 'of', 'in', 'i', 'is', 'that', 'it', 'on', 'you', 'this', 'for', 'but', 'with', 'are', 'have', 'be', 'at', 'or', 'as', 'was', 'so', 'if', 'out', 'not', 'my', 'me', 'we', 'from', 'about']);
+              return text.toLowerCase().match(/\\b\\w+\\b/g)?.filter(w => w.length > 3 && !stops.has(w)) || [];
+            };
+            
+            const k1 = new Set(getKeywords(p1.bio));
+            const k2 = getKeywords(p2.bio);
+            
+            let sharedWords = 0;
+            k2.forEach(w => {
+              if (k1.has(w)) sharedWords++;
+            });
+            score += sharedWords * 5;
+          }
+          
+          // Age proximity
+          const ageDiff = Math.abs(calculateAge(p1.birthDate) - calculateAge(p2.birthDate));
+          if (ageDiff <= 3) score += 10;
+          else if (ageDiff <= 5) score += 5;
+          
+          return score;
+        };
+
         const users = snap.docs
           .map(d => d.data() as UserProfile)
-          .filter(u => !profile.swipedIds?.includes(u.uid));
+          .filter(u => {
+             const age = calculateAge(u.birthDate);
+             return !profile.swipedIds?.includes(u.uid) && !u.isIncognito && age >= minPref && age <= maxPref;
+          })
+          .sort((a, b) => calculateCompatibilityScore(profile, b) - calculateCompatibilityScore(profile, a));
         
         setPotentialMatches(users);
         setCurrentIndex(0); // Reset index for new batch
@@ -48,7 +103,7 @@ export default function Discovery({ profile }: DiscoveryProps) {
     };
 
     fetchPotentials();
-  }, [profile.interestedIn]); // Only re-fetch if interest changes
+  }, [profile.interestedIn, profile.minAgePreference, profile.maxAgePreference]); // Only re-fetch if interest changes
 
   const handleSwipe = async (direction: 'left' | 'right') => {
     const target = potentialMatches[currentIndex];
@@ -117,8 +172,16 @@ export default function Discovery({ profile }: DiscoveryProps) {
           <h2 className="text-2xl font-serif italic text-white/90">Curated View</h2>
           <p className="text-[9px] uppercase tracking-[0.2em] text-[#F27D26]">Daily Professionals</p>
         </div>
-        <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-[#F27D26]">
-          <ShieldCheck size={20} />
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowFilters(true)}
+            className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <Settings2 size={18} />
+          </button>
+          <div className="w-10 h-10 rounded-full border border-[#F27D26]/30 bg-[#F27D26]/10 flex items-center justify-center text-[#F27D26]">
+            <ShieldCheck size={20} />
+          </div>
         </div>
       </header>
 
@@ -155,7 +218,7 @@ export default function Discovery({ profile }: DiscoveryProps) {
                   </div>
                   <div className="flex flex-wrap items-center gap-4 text-[10px] text-gray-500 uppercase tracking-widest font-bold">
                     <span className="flex items-center gap-1.5"><MapPin size={12} className="text-[#F27D26]"/> {currentProfile.neighborhood}</span>
-                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-[#F27D26]"/> 30+</span>
+                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-[#F27D26]"/> {calculateAge(currentProfile.birthDate)}</span>
                   </div>
                 </div>
               </div>
@@ -252,6 +315,93 @@ export default function Discovery({ profile }: DiscoveryProps) {
                 <Lock size={12} />
                 <span className="text-[8px] uppercase tracking-widest">End-to-End Encrypted</span>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] max-w-md mx-auto bg-black/80 backdrop-blur-sm flex items-end justify-center"
+          >
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="bg-[#111] border-t border-white/10 rounded-t-[2.5rem] p-8 w-full shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setShowFilters(false)}
+                className="absolute top-6 right-6 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+
+              <h3 className="text-xl font-serif italic mb-2">Discovery Pacing</h3>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-8">Refine Your Professional Circle</p>
+              
+              <div className="space-y-6 mb-10">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Minimum Age</span>
+                    <span className="font-bold text-[#F27D26]">{tempMinAge}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="18" 
+                    max="100" 
+                    value={tempMinAge}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (val <= tempMaxAge) setTempMinAge(val);
+                    }}
+                    className="w-full accent-[#F27D26] bg-white/10 rounded-full h-1 appearance-none"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Maximum Age</span>
+                    <span className="font-bold text-[#F27D26]">{tempMaxAge}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="18" 
+                    max="100" 
+                    value={tempMaxAge}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (val >= tempMinAge) setTempMaxAge(val);
+                    }}
+                    className="w-full accent-[#F27D26] bg-white/10 rounded-full h-1 appearance-none"
+                  />
+                </div>
+              </div>
+
+              <button 
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, 'users', profile.uid), {
+                      minAgePreference: tempMinAge,
+                      maxAgePreference: tempMaxAge,
+                      updatedAt: serverTimestamp()
+                    });
+                    setShowFilters(false);
+                    // Reset current match queue to trigger refresh
+                    setPotentialMatches([]);
+                  } catch(e) {
+                    // console.error(e)
+                  }
+                }}
+                className="w-full h-14 rounded-full bg-[#F27D26] text-black font-bold uppercase tracking-widest text-[10px] flex items-center justify-center hover:bg-[#F27D26]/90 transition-colors"
+              >
+                Apply Constraints
+              </button>
             </motion.div>
           </motion.div>
         )}
