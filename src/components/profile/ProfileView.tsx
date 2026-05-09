@@ -1,6 +1,6 @@
 import { UserProfile } from '../../types';
 import { motion } from 'motion/react';
-import { LogOut, ShieldCheck, CreditCard, ChevronRight, MapPin, Eye, Settings, Briefcase } from 'lucide-react';
+import { LogOut, ShieldCheck, CreditCard, ChevronRight, MapPin, Eye, EyeOff, Settings, Briefcase } from 'lucide-react';
 import PhotoUpload from '../ui/PhotoUpload';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
@@ -94,6 +94,21 @@ export default function ProfileView({ profile, onLogout }: ProfileViewProps) {
               icon={<Eye size={18} className={profile.isIncognito ? 'text-[#F27D26]' : ''}/>} 
               label="Incognito Mode" 
               value={profile.isIncognito ? "Active" : "Off"} 
+            />
+            <MenuItem 
+              onClick={async () => {
+                try {
+                  await updateDoc(doc(db, 'users', profile.uid), {
+                    isHidden: !profile.isHidden,
+                    updatedAt: serverTimestamp()
+                  });
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              icon={profile.isHidden ? <EyeOff size={18} className="text-[#F27D26]" /> : <Eye size={18} />} 
+              label="Hide Profile" 
+              value={profile.isHidden ? "Hidden" : "Visible"} 
             />
             <MenuItem icon={<Settings size={18}/>} label="Preference Filters" />
           </div>

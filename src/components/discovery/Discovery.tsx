@@ -89,7 +89,7 @@ export default function Discovery({ profile }: DiscoveryProps) {
           .map(d => d.data() as UserProfile)
           .filter(u => {
              const age = calculateAge(u.birthDate);
-             return !profile.swipedIds?.includes(u.uid) && !u.isIncognito && age >= minPref && age <= maxPref;
+             return !profile.swipedIds?.includes(u.uid) && !u.isIncognito && !u.isHidden && age >= minPref && age <= maxPref;
           })
           .sort((a, b) => calculateCompatibilityScore(profile, b) - calculateCompatibilityScore(profile, a));
         

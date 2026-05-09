@@ -17,6 +17,7 @@ export interface UserProfile {
   isIncognito?: boolean;
   minAgePreference?: number;
   maxAgePreference?: number;
+  isHidden?: boolean;
   subscriptionTier: SubscriptionTier;
   createdAt: any;
   updatedAt: any;
